@@ -20,7 +20,7 @@ const TaskList = ({
   onAddTask,
 }: TaskListProps) => {
   return (
-    <div className="space-y-4 w-full max-w-2xl mx-auto p-4">
+    <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold">Tasks</h2>
         <Button onClick={onAddTask} size="sm">

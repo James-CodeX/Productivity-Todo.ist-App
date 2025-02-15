@@ -6,6 +6,7 @@ import { Edit2, Trash2 } from "lucide-react";
 interface TaskItemProps {
   id?: string;
   title?: string;
+  description?: string;
   isCompleted?: boolean;
   recurringSchedule?: "daily" | "weekly" | "monthly" | null;
   lastCompletedAt?: string;
@@ -18,6 +19,7 @@ interface TaskItemProps {
 const TaskItem = ({
   id = "",
   title = "Untitled Task",
+  description = "",
   isCompleted = false,
   recurringSchedule = null,
   onComplete,
@@ -25,7 +27,7 @@ const TaskItem = ({
   onDelete,
 }: TaskItemProps) => {
   return (
-    <div className="flex items-center justify-between p-4 bg-card rounded-lg border">
+    <div className="group flex items-center justify-between p-4 bg-white rounded-lg border shadow-sm transition-all hover:shadow-md">
       <div className="flex items-center space-x-4">
         <Checkbox
           checked={isCompleted}
@@ -37,6 +39,9 @@ const TaskItem = ({
           >
             {title}
           </p>
+          {description && (
+            <p className="text-sm text-muted-foreground mt-1">{description}</p>
+          )}
           {recurringSchedule && (
             <p className="text-sm text-muted-foreground">
               Repeats: {recurringSchedule}
