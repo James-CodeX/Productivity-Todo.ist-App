@@ -1,7 +1,9 @@
 import React from "react";
 import { Link, Navigate } from "react-router-dom";
-import { useUser } from '@supabase/auth-helpers-react';
-import { getTasks, createTask, updateTask, deleteTask } from '@/lib/db';
+import { User } from "@supabase/supabase-js";
+import { getTasks, createTask, updateTask, deleteTask } from "@/lib/db";
+import { supabase } from "@/lib/supabase";
+import { CompletionHistory } from "@/types/task";
 import TaskList from "./TaskList";
 import TaskModal from "./TaskModal";
 import { Task } from "@/types/task";
@@ -9,10 +11,27 @@ import { Button } from "./ui/button";
 import { ClipboardList } from "lucide-react";
 
 function Home() {
-  const user = useUser();
+  const [user, setUser] = React.useState<User | null>(null);
+
+  React.useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
   const [tasks, setTasks] = React.useState<Task[]>([]);
   const [isModalOpen, setIsModalOpen] = React.useState(false);
   const [editingTask, setEditingTask] = React.useState<Task | null>(null);
+  const [completionHistory, setCompletionHistory] = React.useState<
+    CompletionHistory[]
+  >([]);
 
   React.useEffect(() => {
     if (user) {
@@ -35,7 +54,7 @@ function Home() {
           ...taskData,
           updated_at: new Date().toISOString(),
         });
-        setTasks(tasks.map(t => t.id === editingTask.id ? updated : t));
+        setTasks(tasks.map((t) => (t.id === editingTask.id ? updated : t)));
       } else {
         const created = await createTask({
           ...taskData,
@@ -47,12 +66,12 @@ function Home() {
       setIsModalOpen(false);
       setEditingTask(null);
     } catch (error) {
-      console.error('Error saving task:', error);
+      console.error("Error saving task:", error);
     }
   };
 
   const handleEdit = (id: string) => {
-    const task = tasks.find(t => t.id === id);
+    const task = tasks.find((t) => t.id === id);
     if (task) {
       setEditingTask(task);
       setIsModalOpen(true);
@@ -62,130 +81,36 @@ function Home() {
   const handleDelete = async (id: string) => {
     try {
       await deleteTask(id);
-      setTasks(tasks.filter(t => t.id !== id));
+      setTasks(tasks.filter((t) => t.id !== id));
     } catch (error) {
-      console.error('Error deleting task:', error);
+      console.error("Error deleting task:", error);
     }
   };
 
   const handleTaskComplete = async (id: string) => {
     try {
-      const task = tasks.find(t => t.id === id);
+      const task = tasks.find((t) => t.id === id);
       if (task) {
         const now = new Date().toISOString();
+        const completionRecord = {
+          id: Date.now().toString(),
+          taskId: id,
+          completedAt: now,
+        };
+
         await updateTask(id, {
           isCompleted: true,
           lastCompletedAt: now,
-          nextDueAt: task.recurringSchedule ? getNextDueDate(task.recurringSchedule).toISOString() : undefined,
+          nextDueAt: task.recurringSchedule
+            ? getNextDueDate(task.recurringSchedule).toISOString()
+            : undefined,
         });
-        setTasks(tasks.filter(t => t.id !== id));
+
+        setCompletionHistory([...completionHistory, completionRecord]);
+        setTasks(tasks.filter((t) => t.id !== id));
       }
     } catch (error) {
-      console.error('Error completing task:', error);
-    }
-  };
-    {
-      id: "1",
-      title: "Complete project proposal",
-      isCompleted: false,
-      recurringSchedule: "daily",
-    },
-    {
-      id: "2",
-      title: "Team meeting",
-      isCompleted: false,
-      recurringSchedule: "weekly",
-    },
-  ]);
-
-  const [completedTasks, setCompletedTasks] = React.useState<Task[]>([]);
-  const [isModalOpen, setIsModalOpen] = React.useState(false);
-  const [completionHistory, setCompletionHistory] = React.useState<
-    CompletionHistory[]
-  >([]);
-
-  React.useEffect(() => {
-    // Check for recurring tasks that need to be restored
-    const now = new Date();
-    const storedTasks = localStorage.getItem("recurringTasks");
-    if (storedTasks) {
-      const parsedTasks: Task[] = JSON.parse(storedTasks);
-      const tasksToRestore = parsedTasks.filter((task) => {
-        if (!task.nextDueAt) return false;
-        const dueDate = new Date(task.nextDueAt);
-        return dueDate <= now;
-      });
-
-      if (tasksToRestore.length > 0) {
-        setTasks((current) => [
-          ...current,
-          ...tasksToRestore.map((task) => ({
-            ...task,
-            isCompleted: false,
-            nextDueAt: undefined,
-            lastCompletedAt: undefined,
-          })),
-        ]);
-        // Remove restored tasks from storage
-        localStorage.setItem(
-          "recurringTasks",
-          JSON.stringify(
-            parsedTasks.filter(
-              (t) => !tasksToRestore.find((rt) => rt.id === t.id),
-            ),
-          ),
-        );
-      }
-    }
-  }, []);
-
-  const handleTaskComplete = (id: string) => {
-    const taskToComplete = tasks.find((task) => task.id === id);
-    if (taskToComplete) {
-      const now = new Date();
-      const completionRecord = {
-        id: Date.now().toString(),
-        taskId: id,
-        completedAt: now.toISOString(),
-      };
-
-      setCompletionHistory([...completionHistory, completionRecord]);
-      setTasks(tasks.filter((task) => task.id !== id));
-
-      if (taskToComplete.recurringSchedule) {
-        // Store recurring task with next due date
-        const nextDueAt = getNextDueDate(taskToComplete.recurringSchedule);
-        const recurringTask = {
-          ...taskToComplete,
-          lastCompletedAt: now.toISOString(),
-          nextDueAt: nextDueAt.toISOString(),
-        };
-
-        const storedTasks = localStorage.getItem("recurringTasks");
-        const parsedTasks: Task[] = storedTasks ? JSON.parse(storedTasks) : [];
-        localStorage.setItem(
-          "recurringTasks",
-          JSON.stringify([...parsedTasks, recurringTask]),
-        );
-      }
-
-      // Store in completed tasks
-      const storedCompletedTasks = localStorage.getItem("completedTasks");
-      const parsedCompletedTasks: Task[] = storedCompletedTasks
-        ? JSON.parse(storedCompletedTasks)
-        : [];
-      const updatedCompletedTasks = [
-        ...parsedCompletedTasks,
-        {
-          ...taskToComplete,
-          isCompleted: true,
-          lastCompletedAt: now.toISOString(),
-        },
-      ];
-      localStorage.setItem(
-        "completedTasks",
-        JSON.stringify(updatedCompletedTasks),
-      );
+      console.error("Error completing task:", error);
     }
   };
 
@@ -201,23 +126,6 @@ function Home() {
       default:
         return now;
     }
-  };
-
-  const handleAddTask = (taskData: {
-    title: string;
-    recurringSchedule: string | null;
-  }) => {
-    const newTask: Task = {
-      id: Date.now().toString(),
-      title: taskData.title,
-      isCompleted: false,
-      recurringSchedule: taskData.recurringSchedule as
-        | "daily"
-        | "weekly"
-        | "monthly"
-        | null,
-    };
-    setTasks([...tasks, newTask]);
   };
 
   return (
